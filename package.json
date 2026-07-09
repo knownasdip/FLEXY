@@ -1,0 +1,17 @@
+{
+  "name": "flexy",
+  "version": "1.0.0",
+  "description": "FLEXY — Tailored t-shirts, shirts and hoodies with size recommendation",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "echo 'No build step required'",
+    "lint": "echo 'No lint step required'",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2"
+  }
+}
