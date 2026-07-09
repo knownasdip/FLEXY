@@ -1,7 +1,0 @@
-{
-  "name": "FLEXY",
-  "description": "FLEXY — Tailored t-shirts, shirts and hoodies with size recommendation",
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
