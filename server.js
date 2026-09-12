@@ -49,21 +49,32 @@ function getValidSupabaseConfig() {
 const { url: supabaseUrl, key: supabaseKey } = getValidSupabaseConfig();
 let supabase = null;
 let isUsersTableAvailable = true;
+let isOrdersTableAvailable = true;
+let isReviewsTableAvailable = true;
+let isGalleryTableAvailable = true;
 
-function handleSupabaseTableError(err, context) {
-  if (!err) return;
+function handleSupabaseTableError(err, context, tableName = 'users') {
+  if (!err) return false;
   const msg = err.message || String(err);
-  if (
-    msg.includes('Could not find the table') || 
-    (msg.includes('users') && (msg.includes('relation') || msg.includes('does not exist') || msg.includes('schema cache')))
-  ) {
-    if (isUsersTableAvailable) {
+  const isMissingTable = msg.includes('Could not find') || msg.includes('relation') || msg.includes('does not exist') || msg.includes('schema cache');
+  if (isMissingTable) {
+    if (tableName === 'users' && isUsersTableAvailable) {
       isUsersTableAvailable = false;
       console.log(`[INFO] Supabase 'users' table is not available yet. Falling back to local file-based database for users.`);
+    } else if (tableName === 'gallery' && isGalleryTableAvailable) {
+      isGalleryTableAvailable = false;
+      console.log(`[INFO] Supabase 'gallery' table is not available yet. Falling back to local file-based database for gallery.`);
+    } else if (tableName === 'orders' && isOrdersTableAvailable) {
+      isOrdersTableAvailable = false;
+      console.log(`[INFO] Supabase 'orders' table is not available yet. Falling back to local file-based database for orders.`);
+    } else if (tableName === 'reviews' && isReviewsTableAvailable) {
+      isReviewsTableAvailable = false;
+      console.log(`[INFO] Supabase 'reviews' table is not available yet. Falling back to local file-based database for reviews.`);
     }
-  } else {
-    console.log(`[Supabase Warning] ${context}:`, msg);
+    return true;
   }
+  console.log(`[Supabase Warning] ${context}:`, msg);
+  return false;
 }
 
 try {
@@ -74,8 +85,8 @@ try {
 }
 
 // Middleware for parsing JSON and form submissions
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve static files from the root directory
 app.use(express.static(__dirname));
@@ -183,8 +194,6 @@ const DEFAULT_GALLERY = [
     createdAt: "2026-07-09T00:00:00.000Z"
   }
 ];
-
-let isGalleryTableAvailable = true;
 
 function readGallery() {
   try {
@@ -324,7 +333,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 app.get('/api/admin/orders', requireAdmin, async (req, res) => {
   try {
     let allOrders = [];
-    if (supabase) {
+    if (supabase && isOrdersTableAvailable) {
       try {
         const { data, error } = await supabase
           .from('orders')
@@ -346,9 +355,13 @@ app.get('/api/admin/orders', requireAdmin, async (req, res) => {
             createdAt: o.created_at
           }));
         } else {
+          if (error) {
+            handleSupabaseTableError(error, 'fetching admin orders', 'orders');
+          }
           allOrders = readOrders();
         }
       } catch (e) {
+        handleSupabaseTableError(e, 'Exception fetching admin orders', 'orders');
         allOrders = readOrders();
       }
     } else {
@@ -376,17 +389,17 @@ app.post('/api/admin/orders/status', requireAdmin, async (req, res) => {
   }
 
   // Update in Supabase
-  if (supabase) {
+  if (supabase && isOrdersTableAvailable) {
     try {
       const { error } = await supabase
         .from('orders')
         .update({ status: status })
         .eq('id', orderId);
       if (error) {
-        console.error('Supabase error updating status:', error.message);
+        handleSupabaseTableError(error, 'updating status', 'orders');
       }
     } catch (e) {
-      console.error('Exception updating order status in Supabase:', e);
+      handleSupabaseTableError(e, 'Exception updating order status in Supabase', 'orders');
     }
   }
 
@@ -421,7 +434,7 @@ app.post('/api/orders', async (req, res) => {
 
   // Try saving to Supabase
   let supabaseSuccess = false;
-  if (supabase) {
+  if (supabase && isOrdersTableAvailable) {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -441,13 +454,13 @@ app.post('/api/orders', async (req, res) => {
         }]);
 
       if (error) {
-        console.error('Supabase Error writing order:', error.message);
+        handleSupabaseTableError(error, 'writing order', 'orders');
       } else {
         supabaseSuccess = true;
         console.log('Order saved to Supabase successfully:', orderId);
       }
     } catch (dbErr) {
-      console.error('Exception writing order to Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception writing order to Supabase', 'orders');
     }
   }
 
@@ -462,7 +475,7 @@ app.post('/api/orders', async (req, res) => {
 // API: Get all orders (for admin/tracking view)
 app.get('/api/orders', async (req, res) => {
   // Try fetching from Supabase first
-  if (supabase) {
+  if (supabase && isOrdersTableAvailable) {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -486,10 +499,10 @@ app.get('/api/orders', async (req, res) => {
         }));
         return res.json({ success: true, orders: mapped });
       } else if (error) {
-        console.error('Supabase Error fetching all orders:', error.message);
+        handleSupabaseTableError(error, 'fetching all orders', 'orders');
       }
     } catch (dbErr) {
-      console.error('Exception reading all orders from Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception reading all orders from Supabase', 'orders');
     }
   }
 
@@ -507,7 +520,7 @@ app.get('/api/orders/track', async (req, res) => {
   const queryClean = query.trim();
 
   // Try fetching from Supabase first
-  if (supabase) {
+  if (supabase && isOrdersTableAvailable) {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -531,10 +544,10 @@ app.get('/api/orders/track', async (req, res) => {
         }));
         return res.json({ success: true, orders: mapped });
       } else if (error) {
-        console.error('Supabase Error tracking order:', error.message);
+        handleSupabaseTableError(error, 'tracking order', 'orders');
       }
     } catch (dbErr) {
-      console.error('Exception reading orders from Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception reading orders from Supabase', 'orders');
     }
   }
 
@@ -567,20 +580,20 @@ app.post('/api/reviews', async (req, res) => {
   };
 
   let supabaseSuccess = false;
-  if (supabase) {
+  if (supabase && isReviewsTableAvailable) {
     try {
       const { data, error } = await supabase
         .from('reviews')
         .insert([newReview]);
 
       if (error) {
-        console.error('Supabase Error submitting review:', error.message);
+        handleSupabaseTableError(error, 'submitting review', 'reviews');
       } else {
         supabaseSuccess = true;
         console.log('Review saved to Supabase successfully.');
       }
     } catch (dbErr) {
-      console.error('Exception writing review to Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception writing review to Supabase', 'reviews');
     }
   }
 
@@ -602,7 +615,7 @@ app.get('/api/reviews', async (req, res) => {
   let dbReviews = [];
   let fetchedFromSupabase = false;
 
-  if (supabase) {
+  if (supabase && isReviewsTableAvailable) {
     try {
       const { data, error } = await supabase
         .from('reviews')
@@ -620,10 +633,10 @@ app.get('/api/reviews', async (req, res) => {
         }));
         fetchedFromSupabase = true;
       } else if (error) {
-        console.error('Supabase Error fetching reviews:', error.message);
+        handleSupabaseTableError(error, 'fetching reviews', 'reviews');
       }
     } catch (dbErr) {
-      console.error('Exception reading reviews from Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception reading reviews from Supabase', 'reviews');
     }
   }
 
@@ -670,13 +683,10 @@ app.get('/api/gallery', async (req, res) => {
         }));
         fetchedFromSupabase = true;
       } else if (error) {
-        if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.message.includes('Could not find'))) {
-          isGalleryTableAvailable = false;
-        }
-        console.error('Supabase Error fetching gallery:', error.message);
+        handleSupabaseTableError(error, 'fetching gallery', 'gallery');
       }
     } catch (dbErr) {
-      console.error('Exception reading gallery from Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception reading gallery from Supabase', 'gallery');
     }
   }
 
@@ -727,15 +737,12 @@ app.post('/api/gallery', async (req, res) => {
         }]);
 
       if (error) {
-        if (error.message && (error.message.includes('relation') || error.message.includes('does not exist') || error.message.includes('Could not find'))) {
-          isGalleryTableAvailable = false;
-        }
-        console.error('Supabase Error saving gallery item:', error.message);
+        handleSupabaseTableError(error, 'saving gallery item', 'gallery');
       } else {
         supabaseSuccess = true;
       }
     } catch (dbErr) {
-      console.error('Exception writing gallery to Supabase:', dbErr);
+      handleSupabaseTableError(dbErr, 'Exception writing gallery to Supabase', 'gallery');
     }
   }
 

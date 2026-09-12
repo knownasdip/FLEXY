@@ -1,0 +1,23 @@
+[
+  {
+    "photo": "https://images.pexels.com/photos/2772535/pexels-photo-2772535.jpeg?auto=compress&cs=tinysrgb&w=500",
+    "caption": "Fit exactly like the size finder said — so happy!",
+    "name": "Rafi H.",
+    "stars": "★★★★★",
+    "createdAt": "2026-07-09T00:00:00.000Z"
+  },
+  {
+    "photo": "https://images.pexels.com/photos/30462424/pexels-photo-30462424.jpeg?auto=compress&cs=tinysrgb&w=500",
+    "caption": "Fabric quality is amazing for the price.",
+    "name": "Nusrat J.",
+    "stars": "★★★★★",
+    "createdAt": "2026-07-09T00:00:00.000Z"
+  },
+  {
+    "photo": "https://images.pexels.com/photos/17045118/pexels-photo-17045118.jpeg?auto=compress&cs=tinysrgb&w=500",
+    "caption": "Delivery was quick, shirt looks even better in person.",
+    "name": "Tanvir A.",
+    "stars": "★★★★☆",
+    "createdAt": "2026-07-09T00:00:00.000Z"
+  }
+]
