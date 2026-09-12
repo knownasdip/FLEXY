@@ -7,39 +7,27 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = 3000;
 
-// Initialize Supabase Client with robust validation
+// ==========================================
+//          SUPABASE CLIENT SETUP
+// ==========================================
 function getValidSupabaseConfig() {
-  let url = process.env.SUPABASE_URL;
-  let key = process.env.SUPABASE_KEY;
+  let url = process.env.SUPABASE_URL || '';
+  let key = process.env.SUPABASE_KEY || '';
 
-  const clean = (val) => {
-    if (!val) return '';
-    let s = val.trim();
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-      s = s.slice(1, -1).trim();
-    }
-    if (s === 'undefined' || s === 'null' || s === 'placeholder' || !s) {
-      return '';
-    }
-    return s;
-  };
+  url = url.trim();
+  key = key.trim();
 
-  url = clean(url);
-  key = clean(key);
-
-  const isValidUrl = (str) => {
-    try {
-      const parsed = new URL(str);
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-    } catch (e) {
-      return false;
-    }
-  };
-
-  if (!url || !isValidUrl(url)) {
+  if (!url) {
     url = 'https://jfupywwjdgjtosubgfhl.supabase.co';
+  } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (url.includes('.supabase.co')) {
+      url = 'https://' + url;
+    } else {
+      url = `https://${url}.supabase.co`;
+    }
   }
-  if (!key || key.length < 10) {
+
+  if (!key) {
     key = 'sb_publishable_PclaqbaXoVijGjcYsvvk0w_shUEhwzJ';
   }
 
@@ -48,40 +36,19 @@ function getValidSupabaseConfig() {
 
 const { url: supabaseUrl, key: supabaseKey } = getValidSupabaseConfig();
 let supabase = null;
-let isUsersTableAvailable = true;
-let isOrdersTableAvailable = true;
-let isReviewsTableAvailable = true;
-let isGalleryTableAvailable = true;
 
-function handleSupabaseTableError(err, context, tableName = 'users') {
-  if (!err) return false;
-  const msg = err.message || String(err);
-  const isMissingTable = msg.includes('Could not find') || msg.includes('relation') || msg.includes('does not exist') || msg.includes('schema cache');
-  if (isMissingTable) {
-    if (tableName === 'users' && isUsersTableAvailable) {
-      isUsersTableAvailable = false;
-      console.log(`[INFO] Supabase 'users' table is not available yet. Falling back to local file-based database for users.`);
-    } else if (tableName === 'gallery' && isGalleryTableAvailable) {
-      isGalleryTableAvailable = false;
-      console.log(`[INFO] Supabase 'gallery' table is not available yet. Falling back to local file-based database for gallery.`);
-    } else if (tableName === 'orders' && isOrdersTableAvailable) {
-      isOrdersTableAvailable = false;
-      console.log(`[INFO] Supabase 'orders' table is not available yet. Falling back to local file-based database for orders.`);
-    } else if (tableName === 'reviews' && isReviewsTableAvailable) {
-      isReviewsTableAvailable = false;
-      console.log(`[INFO] Supabase 'reviews' table is not available yet. Falling back to local file-based database for reviews.`);
-    }
-    return true;
-  }
-  console.log(`[Supabase Warning] ${context}:`, msg);
-  return false;
+function logSupabaseWarning(err, context) {
+  const msg = err && (err.message || err.details || JSON.stringify(err));
+  console.warn(`[Supabase Warning] ${context}:`, msg);
 }
 
-try {
-  supabase = createClient(supabaseUrl, supabaseKey);
-  console.log('Supabase client initialized successfully with:', supabaseUrl);
-} catch (error) {
-  console.error('Failed to initialize Supabase client:', error);
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('Supabase client initialized successfully with:', supabaseUrl);
+  } catch (error) {
+    console.error('Failed to initialize Supabase client:', error);
+  }
 }
 
 // Middleware for parsing JSON and form submissions
@@ -91,9 +58,11 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from the root directory
 app.use(express.static(__dirname));
 
+// ==========================================
+//          LOCAL FILE BACKUPS
+// ==========================================
 const ORDERS_FILE = path.join(__dirname, 'orders.json');
 
-// Helper to read orders
 function readOrders() {
   try {
     if (!fs.existsSync(ORDERS_FILE)) {
@@ -108,7 +77,6 @@ function readOrders() {
   }
 }
 
-// Helper to write orders
 function writeOrders(orders) {
   try {
     fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
@@ -119,7 +87,6 @@ function writeOrders(orders) {
 
 const USERS_FILE = path.join(__dirname, 'users.json');
 
-// Helper to read users
 function readUsers() {
   try {
     if (!fs.existsSync(USERS_FILE)) {
@@ -134,7 +101,6 @@ function readUsers() {
   }
 }
 
-// Helper to write users
 function writeUsers(users) {
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
@@ -145,7 +111,6 @@ function writeUsers(users) {
 
 const REVIEWS_FILE = path.join(__dirname, 'reviews.json');
 
-// Helper to read reviews
 function readReviews() {
   try {
     if (!fs.existsSync(REVIEWS_FILE)) {
@@ -160,7 +125,6 @@ function readReviews() {
   }
 }
 
-// Helper to write reviews
 function writeReviews(reviews) {
   try {
     fs.writeFileSync(REVIEWS_FILE, JSON.stringify(reviews, null, 2));
@@ -217,7 +181,6 @@ function writeGallery(gallery) {
   }
 }
 
-
 // ==========================================
 //           ADMIN PANEL ENDPOINTS
 // ==========================================
@@ -245,7 +208,6 @@ function writeAdmin(adminData) {
   }
 }
 
-// Middleware to protect admin endpoints
 function requireAdmin(req, res, next) {
   const token = req.headers.authorization;
   if (!token || !activeAdminTokens.has(token)) {
@@ -254,13 +216,11 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// Check admin configuration status
 app.get('/api/admin/status', (req, res) => {
   const admin = readAdmin();
   res.json({ success: true, exists: admin !== null });
 });
 
-// Setup admin for the first time
 app.post('/api/admin/setup', (req, res) => {
   const admin = readAdmin();
   if (admin !== null) {
@@ -277,7 +237,6 @@ app.post('/api/admin/setup', (req, res) => {
   res.json({ success: true, message: 'Admin configuration successful.' });
 });
 
-// Admin login
 app.post('/api/admin/login', (req, res) => {
   const admin = readAdmin();
   if (admin === null) {
@@ -298,26 +257,29 @@ app.post('/api/admin/login', (req, res) => {
   res.status(401).json({ success: false, message: 'Invalid admin email or password.' });
 });
 
-// Admin API to get all users
+// Admin API to get all registered users
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     let allUsers = [];
-    if (supabase && isUsersTableAvailable) {
+    if (supabase) {
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('*')
-          .order('id', { ascending: true });
+          .select('name, email_or_phone, created_at')
+          .order('created_at', { ascending: true });
+
         if (!error && data) {
           allUsers = data.map(u => ({
             name: u.name,
             emailOrPhone: u.email_or_phone,
-            createdAt: u.created_at || new Date().toISOString()
+            createdAt: u.created_at
           }));
-        } else {
+        } else if (error) {
+          logSupabaseWarning(error, 'fetching admin users');
           allUsers = readUsers();
         }
       } catch (e) {
+        logSupabaseWarning(e, 'Exception fetching admin users');
         allUsers = readUsers();
       }
     } else {
@@ -333,12 +295,13 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
 app.get('/api/admin/orders', requireAdmin, async (req, res) => {
   try {
     let allOrders = [];
-    if (supabase && isOrdersTableAvailable) {
+    if (supabase) {
       try {
         const { data, error } = await supabase
           .from('orders')
           .select('*')
           .order('created_at', { ascending: false });
+
         if (!error && data) {
           allOrders = data.map(o => ({
             id: o.id,
@@ -347,21 +310,19 @@ app.get('/api/admin/orders', requireAdmin, async (req, res) => {
             customerAddress: o.customer_address,
             deliveryLocation: o.delivery_location,
             paymentMethod: o.payment_method,
-            items: o.items,
+            items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
             subtotal: o.subtotal,
             shippingFee: o.shipping_fee,
             total: o.total,
             status: o.status,
             createdAt: o.created_at
           }));
-        } else {
-          if (error) {
-            handleSupabaseTableError(error, 'fetching admin orders', 'orders');
-          }
+        } else if (error) {
+          logSupabaseWarning(error, 'fetching admin orders');
           allOrders = readOrders();
         }
       } catch (e) {
-        handleSupabaseTableError(e, 'Exception fetching admin orders', 'orders');
+        logSupabaseWarning(e, 'Exception fetching admin orders');
         allOrders = readOrders();
       }
     } else {
@@ -380,7 +341,7 @@ app.post('/api/admin/orders/status', requireAdmin, async (req, res) => {
     return res.status(400).json({ success: false, message: 'Order ID and status are required.' });
   }
 
-  // Update in local backup first
+  // Update in local file
   const localOrders = readOrders();
   const orderIdx = localOrders.findIndex(o => o.id === orderId);
   if (orderIdx !== -1) {
@@ -389,25 +350,27 @@ app.post('/api/admin/orders/status', requireAdmin, async (req, res) => {
   }
 
   // Update in Supabase
-  if (supabase && isOrdersTableAvailable) {
+  if (supabase) {
     try {
       const { error } = await supabase
         .from('orders')
         .update({ status: status })
         .eq('id', orderId);
+
       if (error) {
-        handleSupabaseTableError(error, 'updating status', 'orders');
+        logSupabaseWarning(error, 'updating status in Supabase');
       }
     } catch (e) {
-      handleSupabaseTableError(e, 'Exception updating order status in Supabase', 'orders');
+      logSupabaseWarning(e, 'Exception updating order status in Supabase');
     }
   }
 
   res.json({ success: true, message: 'Order status updated successfully.' });
 });
 
-
-// API: Place a new order
+// ==========================================
+//              ORDERS APIS
+// ==========================================
 app.post('/api/orders', async (req, res) => {
   const { customerName, customerPhone, customerAddress, deliveryLocation, paymentMethod, items, subtotal, shippingFee, total } = req.body;
 
@@ -416,7 +379,8 @@ app.post('/api/orders', async (req, res) => {
   }
 
   const orderId = 'FLX-' + Math.floor(100000 + Math.random() * 900000);
-  
+  const now = new Date();
+
   const newOrder = {
     id: orderId,
     customerName,
@@ -429,38 +393,40 @@ app.post('/api/orders', async (req, res) => {
     shippingFee: Number(shippingFee),
     total: Number(total),
     status: 'Pending',
-    createdAt: new Date().toISOString()
+    createdAt: now.toISOString()
   };
 
   // Try saving to Supabase
   let supabaseSuccess = false;
-  if (supabase && isOrdersTableAvailable) {
+  if (supabase) {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('orders')
-        .insert([{
-          id: newOrder.id,
-          customer_name: newOrder.customerName,
-          customer_phone: newOrder.customerPhone,
-          customer_address: newOrder.customerAddress,
-          delivery_location: newOrder.deliveryLocation,
-          payment_method: newOrder.paymentMethod,
-          items: newOrder.items,
-          subtotal: newOrder.subtotal,
-          shipping_fee: newOrder.shippingFee,
-          total: newOrder.total,
-          status: newOrder.status,
-          created_at: newOrder.createdAt
-        }]);
+        .insert([
+          {
+            id: newOrder.id,
+            customer_name: newOrder.customerName,
+            customer_phone: newOrder.customerPhone,
+            customer_address: newOrder.customerAddress,
+            delivery_location: newOrder.deliveryLocation,
+            payment_method: newOrder.paymentMethod,
+            items: newOrder.items,
+            subtotal: newOrder.subtotal,
+            shipping_fee: newOrder.shippingFee,
+            total: newOrder.total,
+            status: newOrder.status,
+            created_at: newOrder.createdAt
+          }
+        ]);
 
       if (error) {
-        handleSupabaseTableError(error, 'writing order', 'orders');
+        logSupabaseWarning(error, 'writing order to Supabase');
       } else {
         supabaseSuccess = true;
-        console.log('Order saved to Supabase successfully:', orderId);
+        console.log('[Supabase] Order saved successfully:', orderId);
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception writing order to Supabase', 'orders');
+      logSupabaseWarning(dbErr, 'Exception writing order to Supabase');
     }
   }
 
@@ -472,10 +438,9 @@ app.post('/api/orders', async (req, res) => {
   res.status(201).json({ success: true, order: newOrder, syncedWithSupabase: supabaseSuccess });
 });
 
-// API: Get all orders (for admin/tracking view)
 app.get('/api/orders', async (req, res) => {
   // Try fetching from Supabase first
-  if (supabase && isOrdersTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('orders')
@@ -483,26 +448,24 @@ app.get('/api/orders', async (req, res) => {
         .order('created_at', { ascending: false });
 
       if (!error && data) {
-        const mapped = data.map(o => ({
+        const mappedOrders = data.map(o => ({
           id: o.id,
           customerName: o.customer_name,
           customerPhone: o.customer_phone,
           customerAddress: o.customer_address,
           deliveryLocation: o.delivery_location,
           paymentMethod: o.payment_method,
-          items: o.items,
+          items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
           subtotal: o.subtotal,
           shippingFee: o.shipping_fee,
           total: o.total,
           status: o.status,
           createdAt: o.created_at
         }));
-        return res.json({ success: true, orders: mapped });
-      } else if (error) {
-        handleSupabaseTableError(error, 'fetching all orders', 'orders');
+        return res.json({ success: true, orders: mappedOrders });
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception reading all orders from Supabase', 'orders');
+      logSupabaseWarning(dbErr, 'Exception reading all orders from Supabase');
     }
   }
 
@@ -510,7 +473,6 @@ app.get('/api/orders', async (req, res) => {
   res.json({ success: true, orders: orders.reverse() });
 });
 
-// API: Track a specific order by ID or Phone
 app.get('/api/orders/track', async (req, res) => {
   const { query } = req.query;
   if (!query) {
@@ -520,34 +482,33 @@ app.get('/api/orders/track', async (req, res) => {
   const queryClean = query.trim();
 
   // Try fetching from Supabase first
-  if (supabase && isOrdersTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('orders')
         .select('*')
-        .or(`id.ilike.${queryClean},customer_phone.eq.${queryClean}`);
+        .or(`id.ilike.%${queryClean}%,customer_phone.eq.${queryClean}`)
+        .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        const mapped = data.map(o => ({
+        const mappedOrders = data.map(o => ({
           id: o.id,
           customerName: o.customer_name,
           customerPhone: o.customer_phone,
           customerAddress: o.customer_address,
           deliveryLocation: o.delivery_location,
           paymentMethod: o.payment_method,
-          items: o.items,
+          items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
           subtotal: o.subtotal,
           shippingFee: o.shipping_fee,
           total: o.total,
           status: o.status,
           createdAt: o.created_at
         }));
-        return res.json({ success: true, orders: mapped });
-      } else if (error) {
-        handleSupabaseTableError(error, 'tracking order', 'orders');
+        return res.json({ success: true, orders: mappedOrders });
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception reading orders from Supabase', 'orders');
+      logSupabaseWarning(dbErr, 'Exception tracking order from Supabase');
     }
   }
 
@@ -560,7 +521,9 @@ app.get('/api/orders/track', async (req, res) => {
   res.json({ success: true, orders: matched });
 });
 
-// API: Submit a new review
+// ==========================================
+//             REVIEWS APIS
+// ==========================================
 app.post('/api/reviews', async (req, res) => {
   const { productId, stars, ratingVal, textEn, textBn, author, verified } = req.body;
 
@@ -575,29 +538,28 @@ app.post('/api/reviews', async (req, res) => {
     text_en: textEn || '',
     text_bn: textBn || '',
     author,
-    verified: !!verified,
+    verified: verified !== undefined ? (verified ? 1 : 0) : 1,
     created_at: new Date().toISOString()
   };
 
   let supabaseSuccess = false;
-  if (supabase && isReviewsTableAvailable) {
+  if (supabase) {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('reviews')
         .insert([newReview]);
 
       if (error) {
-        handleSupabaseTableError(error, 'submitting review', 'reviews');
+        logSupabaseWarning(error, 'writing review');
       } else {
         supabaseSuccess = true;
-        console.log('Review saved to Supabase successfully.');
+        console.log('[Supabase] Review saved successfully.');
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception writing review to Supabase', 'reviews');
+      logSupabaseWarning(dbErr, 'Exception writing review to Supabase');
     }
   }
 
-  // Always save to local backup
   const reviews = readReviews();
   reviews.push(newReview);
   writeReviews(reviews);
@@ -605,7 +567,6 @@ app.post('/api/reviews', async (req, res) => {
   res.status(201).json({ success: true, review: newReview, syncedWithSupabase: supabaseSuccess });
 });
 
-// API: Fetch reviews for a specific product
 app.get('/api/reviews', async (req, res) => {
   const { productId } = req.query;
   if (!productId) {
@@ -613,13 +574,12 @@ app.get('/api/reviews', async (req, res) => {
   }
 
   let dbReviews = [];
-  let fetchedFromSupabase = false;
 
-  if (supabase && isReviewsTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('reviews')
-        .select('*')
+        .select('stars, text_en, text_bn, author, verified')
         .eq('product_id', productId)
         .order('created_at', { ascending: false });
 
@@ -629,21 +589,17 @@ app.get('/api/reviews', async (req, res) => {
           textEn: r.text_en,
           textBn: r.text_bn,
           author: r.author,
-          verified: r.verified
+          verified: !!r.verified
         }));
-        fetchedFromSupabase = true;
       } else if (error) {
-        handleSupabaseTableError(error, 'fetching reviews', 'reviews');
+        logSupabaseWarning(error, 'reading reviews');
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception reading reviews from Supabase', 'reviews');
+      logSupabaseWarning(dbErr, 'Exception reading reviews from Supabase');
     }
   }
 
-  // Fallback or merge with local reviews
   const localReviews = readReviews().filter(r => r.product_id === productId);
-  
-  // Combine unique ones
   const combined = [...dbReviews];
   localReviews.forEach(lr => {
     const exists = combined.some(cr => cr.author === lr.author && (cr.textEn === lr.text_en || cr.textBn === lr.text_bn));
@@ -661,16 +617,17 @@ app.get('/api/reviews', async (req, res) => {
   res.json({ success: true, reviews: combined });
 });
 
-// API: Get customer styling look reviews
+// ==========================================
+//             GALLERY APIS
+// ==========================================
 app.get('/api/gallery', async (req, res) => {
   let dbGallery = [];
-  let fetchedFromSupabase = false;
 
-  if (supabase && isGalleryTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('gallery')
-        .select('*')
+        .select('photo, caption, name, stars, created_at')
         .order('created_at', { ascending: false });
 
       if (!error && data) {
@@ -681,12 +638,11 @@ app.get('/api/gallery', async (req, res) => {
           stars: g.stars || '★★★★★',
           createdAt: g.created_at
         }));
-        fetchedFromSupabase = true;
       } else if (error) {
-        handleSupabaseTableError(error, 'fetching gallery', 'gallery');
+        logSupabaseWarning(error, 'reading gallery');
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception reading gallery from Supabase', 'gallery');
+      logSupabaseWarning(dbErr, 'Exception reading gallery from Supabase');
     }
   }
 
@@ -700,14 +656,10 @@ app.get('/api/gallery', async (req, res) => {
     }
   });
 
-  // Sort by createdAt descending so newly posted ones appear first, but preserve order of defaults otherwise
-  // Note: DEFAULT_GALLERY items have "2026-07-09T00:00:00.000Z" as date. New items will have later times, appearing first.
   combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
   res.json({ success: true, gallery: combined });
 });
 
-// API: Submit a new customer styling look review
 app.post('/api/gallery', async (req, res) => {
   const { photo, caption, name, stars } = req.body;
 
@@ -724,25 +676,27 @@ app.post('/api/gallery', async (req, res) => {
   };
 
   let supabaseSuccess = false;
-  if (supabase && isGalleryTableAvailable) {
+  if (supabase) {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('gallery')
-        .insert([{
-          photo: newGalleryItem.photo,
-          caption: newGalleryItem.caption,
-          name: newGalleryItem.name,
-          stars: newGalleryItem.stars,
-          created_at: newGalleryItem.createdAt
-        }]);
+        .insert([
+          {
+            photo: newGalleryItem.photo,
+            caption: newGalleryItem.caption,
+            name: newGalleryItem.name,
+            stars: newGalleryItem.stars,
+            created_at: newGalleryItem.createdAt
+          }
+        ]);
 
       if (error) {
-        handleSupabaseTableError(error, 'saving gallery item', 'gallery');
+        logSupabaseWarning(error, 'writing gallery');
       } else {
         supabaseSuccess = true;
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'Exception writing gallery to Supabase', 'gallery');
+      logSupabaseWarning(dbErr, 'Exception writing gallery to Supabase');
     }
   }
 
@@ -753,7 +707,9 @@ app.post('/api/gallery', async (req, res) => {
   res.status(201).json({ success: true, item: newGalleryItem, syncedWithSupabase: supabaseSuccess });
 });
 
-// API: Sign Up (Register a new account)
+// ==========================================
+//             AUTH & USER APIS
+// ==========================================
 app.post('/api/signup', async (req, res) => {
   const { name, emailOrPhone, password } = req.body;
 
@@ -764,24 +720,24 @@ app.post('/api/signup', async (req, res) => {
   const normalizedEmailPhone = emailOrPhone.trim().toLowerCase();
 
   // Try checking if user exists in Supabase first
-  if (supabase && isUsersTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('users')
         .select('id')
         .eq('email_or_phone', normalizedEmailPhone);
 
-      if (error) {
-        handleSupabaseTableError(error, 'signup check');
-      } else if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         return res.status(400).json({ success: false, message: 'An account with this email/phone already exists.' });
+      } else if (error) {
+        logSupabaseWarning(error, 'checking user existence');
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'signup check exception');
+      logSupabaseWarning(dbErr, 'Exception checking user in Supabase');
     }
   }
 
-  // Check in local backup
+  // Check in local file backup
   const users = readUsers();
   const existsLocal = users.some(u => u.emailOrPhone.toLowerCase() === normalizedEmailPhone);
   if (existsLocal) {
@@ -795,38 +751,37 @@ app.post('/api/signup', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  // Try inserting to Supabase
   let supabaseSuccess = false;
-  if (supabase && isUsersTableAvailable) {
+  if (supabase) {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('users')
-        .insert([{
-          name: newUser.name,
-          email_or_phone: newUser.emailOrPhone,
-          password: newUser.password,
-          created_at: newUser.createdAt
-        }]);
+        .insert([
+          {
+            name: newUser.name,
+            email_or_phone: newUser.emailOrPhone,
+            password: newUser.password,
+            created_at: newUser.createdAt
+          }
+        ]);
 
       if (error) {
-        handleSupabaseTableError(error, 'signup insert');
+        logSupabaseWarning(error, 'creating user in Supabase');
       } else {
         supabaseSuccess = true;
-        console.log('User saved to Supabase successfully:', normalizedEmailPhone);
+        console.log('[Supabase] User saved successfully:', normalizedEmailPhone);
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'signup insert exception');
+      logSupabaseWarning(dbErr, 'Exception writing user to Supabase');
     }
   }
 
-  // Always save to local backup
   users.push(newUser);
   writeUsers(users);
 
   res.status(201).json({ success: true, user: { name: newUser.name, emailOrPhone: newUser.emailOrPhone }, syncedWithSupabase: supabaseSuccess });
 });
 
-// API: Log In
 app.post('/api/login', async (req, res) => {
   const { emailOrPhone, password } = req.body;
 
@@ -837,7 +792,7 @@ app.post('/api/login', async (req, res) => {
   const normalizedEmailPhone = emailOrPhone.trim().toLowerCase();
 
   // Try verifying with Supabase first
-  if (supabase && isUsersTableAvailable) {
+  if (supabase) {
     try {
       const { data, error } = await supabase
         .from('users')
@@ -845,18 +800,18 @@ app.post('/api/login', async (req, res) => {
         .eq('email_or_phone', normalizedEmailPhone)
         .eq('password', password);
 
-      if (error) {
-        handleSupabaseTableError(error, 'login query');
-      } else if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         const u = data[0];
         return res.json({ success: true, user: { name: u.name, emailOrPhone: u.email_or_phone } });
+      } else if (error) {
+        logSupabaseWarning(error, 'logging in user');
       }
     } catch (dbErr) {
-      handleSupabaseTableError(dbErr, 'login exception');
+      logSupabaseWarning(dbErr, 'Exception logging in user via Supabase');
     }
   }
 
-  // Fallback to local backup
+  // Fallback to local file backup
   const users = readUsers();
   const matched = users.find(u => u.emailOrPhone.toLowerCase() === normalizedEmailPhone && u.password === password);
   if (matched) {
@@ -866,7 +821,9 @@ app.post('/api/login', async (req, res) => {
   res.status(401).json({ success: false, message: 'Invalid email/phone or password.' });
 });
 
-// API: Get Google OAuth Auth URL
+// ==========================================
+//          GOOGLE OAUTH ENDPOINTS
+// ==========================================
 app.get('/api/auth/google/url', (req, res) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
@@ -892,7 +849,6 @@ app.get('/api/auth/google/url', (req, res) => {
   res.json({ url: authUrl });
 });
 
-// API: Google OAuth Callback Handler
 app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) => {
   const { code, state } = req.query;
   if (!code) {
@@ -906,12 +862,10 @@ app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) =>
     return res.send('Google OAuth credentials are not fully configured on the server (missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET).');
   }
   
-  // Use state parameter to dynamically get the client origin or fallback to server origin
   const origin = state || `${req.protocol}://${req.get('host')}`;
   const redirectUri = `${origin}/auth/google/callback`;
   
   try {
-    // Exchange authorize code for access token
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -935,7 +889,6 @@ app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) =>
     const tokens = await tokenResponse.json();
     const accessToken = tokens.access_token;
     
-    // Fetch Google user profile using access token
     const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: {
         'Authorization': `Bearer ${accessToken}`
@@ -961,25 +914,25 @@ app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) =>
     let supabaseSuccess = false;
     
     // 1. Try checking/saving to Supabase first
-    if (supabase && isUsersTableAvailable) {
+    if (supabase) {
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('*')
+          .select('name, email_or_phone')
           .eq('email_or_phone', normalizedEmail);
           
-        if (error) {
-          handleSupabaseTableError(error, 'Google user query');
-        } else if (data && data.length > 0) {
+        if (!error && data && data.length > 0) {
           userRecord = {
             name: data[0].name,
             emailOrPhone: data[0].email_or_phone
           };
           supabaseSuccess = true;
-          console.log('Google user matched in Supabase:', normalizedEmail);
+          console.log('[Supabase] Google user matched:', normalizedEmail);
+        } else if (error) {
+          logSupabaseWarning(error, 'fetching user in Google callback');
         }
       } catch (dbErr) {
-        handleSupabaseTableError(dbErr, 'Google user query exception');
+        logSupabaseWarning(dbErr, 'Exception fetching Google user from Supabase');
       }
     }
     
@@ -1001,30 +954,32 @@ app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) =>
       const newUser = {
         name,
         emailOrPhone: normalizedEmail,
-        password: Math.random().toString(36).slice(-10) + 'A!', // generate random password
+        password: Math.random().toString(36).slice(-10) + 'A!',
         createdAt: new Date().toISOString()
       };
       
       // Save to Supabase
-      if (supabase && isUsersTableAvailable) {
+      if (supabase) {
         try {
-          const { data, error } = await supabase
+          const { error } = await supabase
             .from('users')
-            .insert([{
-              name: newUser.name,
-              email_or_phone: newUser.emailOrPhone,
-              password: newUser.password,
-              created_at: newUser.createdAt
-            }]);
+            .insert([
+              {
+                name: newUser.name,
+                email_or_phone: newUser.emailOrPhone,
+                password: newUser.password,
+                created_at: newUser.createdAt
+              }
+            ]);
             
           if (!error) {
             supabaseSuccess = true;
-            console.log('Registered Google user saved to Supabase:', normalizedEmail);
+            console.log('[Supabase] Registered Google user saved:', normalizedEmail);
           } else {
-            handleSupabaseTableError(error, 'Google user registration');
+            logSupabaseWarning(error, 'inserting Google user in Supabase');
           }
         } catch (dbErr) {
-          handleSupabaseTableError(dbErr, 'Google user registration exception');
+          logSupabaseWarning(dbErr, 'Exception inserting Google user to Supabase');
         }
       }
       
@@ -1040,7 +995,6 @@ app.get(['/auth/google/callback', '/auth/google/callback/'], async (req, res) =>
       };
     }
     
-    // 4. Send success message to close the popup and pass user info back
     res.send(`
       <!DOCTYPE html>
       <html>
